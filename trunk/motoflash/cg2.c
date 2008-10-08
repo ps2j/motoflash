@@ -62,7 +62,7 @@ void output_file(char *path, char *name, int length, FILE *in) {
 		remain -= toread;
 		toread = (512 < remain) ? 512 : remain;
 	}
-	printf("Wrote %d bytes to %s.\n", length, outfilename);
+	//printf("Wrote %d bytes to %s.\n", length, outfilename);
 	fclose(out);
 }
 
@@ -84,6 +84,7 @@ void usage(char *basename) {
 
 int extract_cg2(char *filename) {
 	struct blockheader curblock;
+	int count = 0, totalsize = 0;
 	FILE *in;
 	memset(&curblock, 0, 0x310);
 
@@ -98,13 +99,17 @@ int extract_cg2(char *filename) {
 		int pad = 0;
 
 		pad = (curblock.length % 16);
-		printf("%s%s, %d bytes\n", curblock.filepath, curblock.filename, curblock.length);
+		//printf("%s%s, %d bytes\n", curblock.filepath, curblock.filename, curblock.length);
 
 		output_file(curblock.filepath, curblock.filename, curblock.length, in);
+		count++; totalsize += curblock.length;
 
 		// Pad to 16 bytes
 		while(ftell(in) % 16 != 0) fseek(in, 1, SEEK_CUR);
 	}
+
+	printf("Extracted %d files totalling %d bytes.\n", count, totalsize);
+
 	return EXIT_SUCCESS;
 }
 
@@ -144,7 +149,10 @@ int main(int argc, char **argv) {
 	}
 
 	if(extract) {
-		if(dirname == NULL) dirname = strdup(filename);
+		if(dirname == NULL) {
+			dirname = malloc(1024);
+			sprintf(dirname, "%s.out", filename);
+		}
 		return extract_cg2(filename);
 	} else if(create) {
 		if(outfilename == NULL) {
