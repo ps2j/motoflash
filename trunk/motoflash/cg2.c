@@ -5,8 +5,12 @@
 #include <stdbool.h>
 #include <getopt.h>
 
-FILE *out = NULL;
 FILE *listfile = NULL;
+
+char *dirname = NULL;
+char *listfilename = NULL;
+
+#define DEFAULT_LISTFILE "cg2_listfile"
 
 struct blockheader {
 	int fill1[10];
@@ -25,11 +29,13 @@ struct blockheader {
 	char pad[16];
 };
 
-//struct
-
 static struct option options[] = {
-	{"help", 0, NULL, 'h'},
+	{"create", 0, NULL, 'c'},
 	{"dir", 1, NULL, 'd'},
+	{"extract", 1, NULL, 'x'},
+	{"help", 0, NULL, 'h'},
+	{"listfile", 1, NULL, 'l'},
+	{"output", 1, NULL, 'o'},
 	{"version", 0, NULL, 'V'},
 	{0, 0, 0, 0}
 };
@@ -61,8 +67,11 @@ void output_file(char *path, char *name, int length, FILE *in) {
 }
 
 void usage(char *basename) {
-	printf("Syntax: %s [-r] [-l listfile] [-f format] file\n", basename);
-	printf(
+	printf("Syntax: %s -x file [-d dirname] [-l listfile]\n", basename);
+	printf("        %s -c -o filename [-l listfile]\n", basename);
+	printf("        %s -h\n", basename);
+	printf("        %s -V\n", basename);
+/*	printf(
 "  -r, --rewind			combine overlapping addresses into one file, rewinding over the overlapped bytes\n\
   -l, --list listfile		direct the s-record list file to listfile, the default is \"listfile\"\n\
   -f, --format format		filename format for code groups, default is \"Group %%g - %%a.bin\"\n\
@@ -70,59 +79,80 @@ void usage(char *basename) {
   -h, --help			display this help text\n\
   -V, --version			display version information\n\
   file				input file in s-record format\n\nReport bugs to <dustin@howett.net>.\n");
+  */
+}
+
+int extract_cg2(char *filename) {
+	struct blockheader curblock;
+	FILE *in;
+	memset(&curblock, 0, 0x310);
+
+	printf("Extracing from CG2 (%s) to folder '%s'.\n", filename, dirname);
+	in = fopen(filename, "r");
+	if(in == NULL) {
+		fprintf(stderr, "Error opening %s.\n", filename);
+		return EXIT_FAILURE;
+	}
+
+	while(fread(&curblock, 0x310, 1, in) != 0) {
+		int pad = 0;
+
+		pad = (curblock.length % 16);
+		printf("%s%s, %d bytes\n", curblock.filepath, curblock.filename, curblock.length);
+
+		output_file(curblock.filepath, curblock.filename, curblock.length, in);
+
+		// Pad to 16 bytes
+		while(ftell(in) % 16 != 0) fseek(in, 1, SEEK_CUR);
+	}
+	return EXIT_SUCCESS;
 }
 
 int main(int argc, char **argv) {
 	char line[16384];
-	bool customlistfile = false;
-	bool customformat = false;
-	char *listfilename;
-	char *infilename;
-	FILE *infile;
+	char *filename;
+	char *outfilename;
+	bool extract, create;
 	struct blockheader cur_block;
 
 	int opt;
-	while((opt = getopt_long(argc, argv, "hV", options, NULL)) != -1) {
+	while((opt = getopt_long(argc, argv, "cdx:hl:o:V", options, NULL)) != -1) {
 		switch(opt) {
+			case 'x': extract = true; filename = strdup(optarg); break;
+			case 'c': create = true; break;
+			case 'd': dirname = strdup(optarg); break;
+			case 'l': listfilename = strdup(optarg); break;
+			case 'o': outfilename = strdup(optarg); break;
 			case 'h':
 				usage(argv[0]);
 				return EXIT_SUCCESS;
 			case 'V':
-				printf("decompile 1.0\nCopyright (C) 2008 Dustin Howett\nNo License\n\nWritten by Dustin Howett.\n");
+				printf("cg2 1.0\nCopyright (C) 2008 Dustin Howett\nNo License\n\nWritten by Dustin Howett.\n");
 				return EXIT_SUCCESS;
 			default:
-		//		usage(argv[0]);
+				usage(argv[0]);
 				return EXIT_FAILURE;
 				break;
 		}
 	}
 
-	if(optind >= argc) {
+	if(listfilename == NULL) listfilename = strdup(DEFAULT_LISTFILE);
+
+	if(extract == create) {
 		usage(argv[0]);
 		return EXIT_FAILURE;
 	}
 
-	infilename = strdup(argv[optind]);
-	printf("Reading: %s\n", infilename);
-	infile = fopen(infilename, "r");
-	if(infile == NULL) {
-		fprintf(stderr, "Error opening %s.\n", infilename);
-		return EXIT_FAILURE;
+	if(extract) {
+		if(dirname == NULL) dirname = strdup(filename);
+		return extract_cg2(filename);
+	} else if(create) {
+		if(outfilename == NULL) {
+			fprintf(stderr, "You need to specify an output filename.\nSee %s --help for syntax help.\n", argv[0]);
+			return EXIT_FAILURE;
+		}
+//		return create_cg2(outfilename);
 	}
-
-	while(fread(&cur_block, 0x310, 1, infile) != 0) {
-		int pad = 0;
-
-		pad = (cur_block.length % 16); // +4
-		printf("%s%s, %d bytes\n", cur_block.filepath, cur_block.filename, cur_block.length);
-
-		output_file(cur_block.filepath, cur_block.filename, cur_block.length, infile);
-
-		// Pad to 16 bytes
-		while(ftell(infile) % 16 != 0) fseek(infile, 1, SEEK_CUR);
-	}
-
-	free(infilename);
 
 	return EXIT_SUCCESS;
 }
