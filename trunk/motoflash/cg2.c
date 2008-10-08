@@ -5,7 +5,10 @@
 #include <stdbool.h>
 #include <getopt.h>
 
-FILE *listfile = NULL;
+#include <sys/stat.h>
+
+/* mkdir_recursive from Nico Golde @ http://nion.modprobe.de/blog/archives/357-Recursive-directoriy-creation.html
+   Thanks a million! */
 
 char *dirname = NULL;
 char *listfilename = NULL;
@@ -40,22 +43,12 @@ static struct option options[] = {
 	{0, 0, 0, 0}
 };
 
-void fixpath(char *path) {
-	while(*path) {
-		if(*path == '/') *path='_';
-		path++;
-	}
-}
-
-void output_file(char *path, char *name, int length, FILE *in) {
+void output_file(char *file, int length, FILE *in) {
 	int remain = length;
 	int toread = (512 < remain) ? 512 : remain;
-	char outfilename[512];
 	char databuf[513];
 	FILE *out;
-	fixpath(path);
-	sprintf(outfilename, "%s%s", path, name);
-	out = fopen(outfilename, "wb");
+	out = fopen(file, "wb");
 	while(remain > 0) {
 		fread(databuf, toread, 1, in);
 		fwrite(databuf, toread, 1, out);
@@ -64,6 +57,44 @@ void output_file(char *path, char *name, int length, FILE *in) {
 	}
 	//printf("Wrote %d bytes to %s.\n", length, outfilename);
 	fclose(out);
+}
+
+static void mkdir_recursive(const char *path) {
+	char opath[256];
+	char *p;
+	size_t len;
+
+	strncpy(opath, path, sizeof(opath));
+	len = strlen(opath);
+	if (opath[len - 1] == '/')
+		opath[len - 1] = '\0';
+	for (p = opath; *p; p++)
+		if (*p == '/') {
+			*p = '\0';
+			if (access(opath, F_OK))
+				mkdir(opath, S_IRWXU);
+			*p = '/';
+		}
+	if (access(opath, F_OK))        /* if path is not terminated with / */
+		mkdir(opath, S_IRWXU);
+}
+
+char *create_output_pathname(char *cgpath) {
+	char *out = malloc(1024);
+	if(cgpath[strlen(cgpath)-1] != '/') strcat(cgpath, "/");
+	if(cgpath[0] == '/') cgpath++;
+
+	sprintf(out, "%s/%s", dirname, cgpath);
+	return out;
+}
+
+char *create_output_filename(char *cgpath, char *filename) {
+	char *out = malloc(1024);
+	if(cgpath[strlen(cgpath)-1] != '/') strcat(cgpath, "/");
+	if(cgpath[0] == '/') cgpath++;
+
+	sprintf(out, "%s/%s%s", dirname, cgpath, filename);
+	return out;
 }
 
 void usage(char *basename) {
@@ -86,6 +117,7 @@ int extract_cg2(char *filename) {
 	struct blockheader curblock;
 	int count = 0, totalsize = 0;
 	FILE *in;
+	FILE *list;
 	memset(&curblock, 0, 0x310);
 
 	printf("Extracing from CG2 (%s) to folder '%s'.\n", filename, dirname);
@@ -95,18 +127,30 @@ int extract_cg2(char *filename) {
 		return EXIT_FAILURE;
 	}
 
+	list = fopen(listfilename, "w");
+
 	while(fread(&curblock, 0x310, 1, in) != 0) {
 		int pad = 0;
+		char *outfile = create_output_filename(curblock.filepath, curblock.filename);
+		char *outpath = create_output_pathname(curblock.filepath);
 
 		pad = (curblock.length % 16);
 		//printf("%s%s, %d bytes\n", curblock.filepath, curblock.filename, curblock.length);
 
-		output_file(curblock.filepath, curblock.filename, curblock.length, in);
+		mkdir_recursive(outpath);
+		output_file(outfile, curblock.length, in);
 		count++; totalsize += curblock.length;
+
+		fprintf(list, "FILE %s IN %s AT %s TYPE 0x%8.8x\n", curblock.filename, curblock.filepath, outfile, curblock.blockType);
+
+		free(outfile);
+		free(outpath);
 
 		// Pad to 16 bytes
 		while(ftell(in) % 16 != 0) fseek(in, 1, SEEK_CUR);
 	}
+
+	fclose(list);
 
 	printf("Extracted %d files totalling %d bytes.\n", count, totalsize);
 
@@ -121,7 +165,7 @@ int main(int argc, char **argv) {
 	struct blockheader cur_block;
 
 	int opt;
-	while((opt = getopt_long(argc, argv, "cdx:hl:o:V", options, NULL)) != -1) {
+	while((opt = getopt_long(argc, argv, "cd:x:hl:o:V", options, NULL)) != -1) {
 		switch(opt) {
 			case 'x': extract = true; filename = strdup(optarg); break;
 			case 'c': create = true; break;
@@ -152,6 +196,8 @@ int main(int argc, char **argv) {
 		if(dirname == NULL) {
 			dirname = malloc(1024);
 			sprintf(dirname, "%s.out", filename);
+		} else {
+			if(dirname[strlen(dirname)-1] == '/') dirname[strlen(dirname)-1] = '\0';
 		}
 		return extract_cg2(filename);
 	} else if(create) {
