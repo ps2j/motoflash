@@ -191,7 +191,7 @@ int list_cg2(char *filename) {
 int main(int argc, char **argv) {
 	char line[16384];
 	char *filename;
-	char *outfilename;
+	char *outfilename = NULL;
 	bool extract, create, list;
 	struct blockheader cur_block;
 
