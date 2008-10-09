@@ -40,6 +40,7 @@ static struct option options[] = {
 	{"extract", 1, NULL, 'x'},
 	{"help", 0, NULL, 'h'},
 	{"listfile", 1, NULL, 'l'},
+	{"test", 1, NULL, 't'},
 	{"output", 1, NULL, 'o'},
 	{"version", 0, NULL, 'V'},
 	{0, 0, 0, 0}
@@ -131,16 +132,48 @@ int extract_flex(char *filename) {
 	return EXIT_SUCCESS;
 }
 
+int list_flex(char *filename) {
+	struct seemheader curseem;
+	struct fileheader curfile;
+	int count = 0, totalsize = 0;
+	FILE *in;
+	memset(&curseem, 0, 14);
+
+	printf("Listing from Flex File (%s).\n", filename, dirname);
+	in = fopen(filename, "r");
+	if(in == NULL) {
+		fprintf(stderr, "Error opening %s.\n", filename);
+		return EXIT_FAILURE;
+	}
+
+	fread(&curfile, 0x12, 1, in);
+
+	while(fread(&curseem, 14, 1, in) != 0) {
+		int pad = 0;
+
+		fseek(in, curseem.length, SEEK_CUR);
+		count++; totalsize += curseem.length;
+
+		printf("Seem %4.4x record %4.4x, length %4.4x. Unknowns: %d, %d, %d\n", curseem.seem, curseem.record, curseem.length,
+			curseem.unknown1, curseem.unknown2, curseem.unknown3);
+	}
+
+	printf("Listed %d seems totalling %d bytes.\n", count, totalsize);
+
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv) {
 	char line[16384];
 	char *filename;
 	char *outfilename;
-	bool extract, create;
+	bool extract, create, list;
 
 	int opt;
-	while((opt = getopt_long(argc, argv, "cd:x:hl:o:V", options, NULL)) != -1) {
+	while((opt = getopt_long(argc, argv, "cd:x:ht:l:o:V", options, NULL)) != -1) {
 		switch(opt) {
 			case 'x': extract = true; filename = strdup(optarg); break;
+			case 't': list = true; filename = strdup(optarg); break;
 			case 'c': create = true; break;
 			case 'd': dirname = strdup(optarg); break;
 			case 'l': listfilename = strdup(optarg); break;
@@ -160,7 +193,7 @@ int main(int argc, char **argv) {
 
 	if(listfilename == NULL) listfilename = strdup(DEFAULT_LISTFILE);
 
-	if(extract == create) {
+	if(extract + create + list > 1) {
 		usage(argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -179,6 +212,8 @@ int main(int argc, char **argv) {
 			return EXIT_FAILURE;
 		}
 //		return create_cg2(outfilename);
+	} else if(list) {
+		return list_flex(filename);
 	}
 
 	return EXIT_SUCCESS;
