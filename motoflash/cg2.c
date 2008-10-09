@@ -37,6 +37,7 @@ static struct option options[] = {
 	{"dir", 1, NULL, 'd'},
 	{"extract", 1, NULL, 'x'},
 	{"help", 0, NULL, 'h'},
+	{"test", 1, NULL, 't'},
 	{"listfile", 1, NULL, 'l'},
 	{"output", 1, NULL, 'o'},
 	{"version", 0, NULL, 'V'},
@@ -99,6 +100,7 @@ char *create_output_filename(char *cgpath, char *filename) {
 
 void usage(char *basename) {
 	printf("Syntax: %s -x file [-d dirname] [-l listfile]\n", basename);
+	printf("        %s -t file\n", basename);
 	printf("        %s -c -o filename [-l listfile]\n", basename);
 	printf("        %s -h\n", basename);
 	printf("        %s -V\n", basename);
@@ -157,17 +159,47 @@ int extract_cg2(char *filename) {
 	return EXIT_SUCCESS;
 }
 
+int list_cg2(char *filename) {
+	struct blockheader curblock;
+	int count = 0, totalsize = 0;
+	FILE *in;
+	memset(&curblock, 0, 0x310);
+
+	printf("Listing from CG2 (%s).\n", filename);
+	in = fopen(filename, "r");
+	if(in == NULL) {
+		fprintf(stderr, "Error opening %s.\n", filename);
+		return EXIT_FAILURE;
+	}
+
+	while(fread(&curblock, 0x310, 1, in) != 0) {
+		int pad = 0;
+
+		printf("%s%s %d bytes, type %8.8x.\n", curblock.filepath, curblock.filename, curblock.length, curblock.blockType);
+		pad = (curblock.length % 16);
+		fseek(in, curblock.length, SEEK_CUR);
+		count++; totalsize += curblock.length;
+		// Pad to 16 bytes
+		while(ftell(in) % 16 != 0) fseek(in, 1, SEEK_CUR);
+	}
+
+	printf("Listed %d files totalling %d bytes.\n", count, totalsize);
+
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv) {
 	char line[16384];
 	char *filename;
 	char *outfilename;
-	bool extract, create;
+	bool extract, create, list;
 	struct blockheader cur_block;
 
 	int opt;
-	while((opt = getopt_long(argc, argv, "cd:x:hl:o:V", options, NULL)) != -1) {
+	while((opt = getopt_long(argc, argv, "cd:x:ht:l:o:V", options, NULL)) != -1) {
 		switch(opt) {
 			case 'x': extract = true; filename = strdup(optarg); break;
+			case 't': list = true; filename = strdup(optarg); break;
 			case 'c': create = true; break;
 			case 'd': dirname = strdup(optarg); break;
 			case 'l': listfilename = strdup(optarg); break;
@@ -187,7 +219,7 @@ int main(int argc, char **argv) {
 
 	if(listfilename == NULL) listfilename = strdup(DEFAULT_LISTFILE);
 
-	if(extract == create) {
+	if(extract + create + list > 1) {
 		usage(argv[0]);
 		return EXIT_FAILURE;
 	}
@@ -206,6 +238,8 @@ int main(int argc, char **argv) {
 			return EXIT_FAILURE;
 		}
 //		return create_cg2(outfilename);
+	} else if(list) {
+		return list_cg2(filename);
 	}
 
 	return EXIT_SUCCESS;
