@@ -1,6 +1,8 @@
 #summary List of known Firmware RAMLoaders
-#labels Phase-Implementation
+#labels Phase-Implementation,Featured
 TODO: Add version numbers Later
+
+These may come in handy when we build our own firmwares.
 
 = Details =
   * *V9m Sprint Monster (from 02.68.00R)* - Displays image and flash status in a proportional font ("Flashing Phn Code", "Flashing EFS"), may not support 0x04000000 flexing because it's not an upgrade ramloader.
