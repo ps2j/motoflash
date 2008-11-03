@@ -139,11 +139,16 @@ int extract_cg2(char *filename) {
 		pad = (curblock.length % 16);
 		//printf("%s%s, %d bytes\n", curblock.filepath, curblock.filename, curblock.length);
 
-		mkdir_recursive(outpath);
-		output_file(outfile, curblock.length, in);
+		if(curblock.length != 0) {
+			mkdir_recursive(outpath);
+			output_file(outfile, curblock.length, in);
+		}
 		count++; totalsize += curblock.length;
 
-		fprintf(list, "FILE %s IN %s AT %s TYPE 0x%8.8x\n", curblock.filename, curblock.filepath, outfile, curblock.blockType);
+		if(curblock.length != 0)
+			fprintf(list, "FILE %s IN %s AT %s TYPE 0x%8.8x\n", curblock.filename, curblock.filepath, outfile, curblock.blockType);
+		else
+			fprintf(list, "DELETE %s IN %s\n", curblock.filename, curblock.filepath);
 
 		free(outfile);
 		free(outpath);
@@ -175,7 +180,10 @@ int list_cg2(char *filename) {
 	while(fread(&curblock, 0x310, 1, in) != 0) {
 		int pad = 0;
 
-		printf("%s%s %d bytes, type %8.8x.\n", curblock.filepath, curblock.filename, curblock.length, curblock.blockType);
+		if(curblock.length != 0)
+			printf("%s%s %d bytes, type %8.8x.\n", curblock.filepath, curblock.filename, curblock.length, curblock.blockType);
+		else
+			printf("Delete %s%s.\n", curblock.filepath, curblock.filename);
 		pad = (curblock.length % 16);
 		fseek(in, curblock.length, SEEK_CUR);
 		count++; totalsize += curblock.length;
