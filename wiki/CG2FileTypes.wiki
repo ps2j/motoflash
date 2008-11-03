@@ -1,5 +1,5 @@
 #summary Integral filetypes for files stored in a CG2
-#labels Phase-Implementation
+#labels Phase-Implementation,Featured
 
 = Confirmed =
   * *0x08000000* - Qualcomm Mini Bootloader (~7 kb)
