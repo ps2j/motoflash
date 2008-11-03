@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <getopt.h>
 
+#include <sys/types.h>
 #include <sys/stat.h>
 
 /* mkdir_recursive from Nico Golde @ http://nion.modprobe.de/blog/archives/357-Recursive-directoriy-creation.html
@@ -26,11 +27,11 @@ struct fileheader {
 };
 
 struct seemheader { // 14 bytes
-	int unknown1;
-	short unknown2;
+	int unknown1; // Seems to be Length + 16 (unless mult. copies)
+	short skip_next; // Length + 8? (standard)
 	short seem;
 	short record;
-	short unknown3;
+	short unknown3; // No idea. Noticed it's 0 unless there're multiple copies,.
 	short length;
 };
 
@@ -122,7 +123,7 @@ int extract_flex(char *filename) {
 		output_file(curseem.seem, curseem.record, curseem.length, in);
 		count++; totalsize += curseem.length;
 
-		fprintf(list, "SEEM %4.4x REC %4.4x LEN %4.4x\n", curseem.seem, curseem.record, curseem.length);
+		fprintf(list, "SEEM %4.4x REC %4.4x\n", curseem.seem, curseem.record);
 	}
 
 	fclose(list);
@@ -155,7 +156,7 @@ int list_flex(char *filename) {
 		count++; totalsize += curseem.length;
 
 		printf("Seem %4.4x record %4.4x, length %4.4x. Unknowns: %d, %d, %d\n", curseem.seem, curseem.record, curseem.length,
-			curseem.unknown1, curseem.unknown2, curseem.unknown3);
+			curseem.unknown1, curseem.skip_next, curseem.unknown3);
 	}
 
 	printf("Listed %d seems totalling %d bytes.\n", count, totalsize);
@@ -163,10 +164,89 @@ int list_flex(char *filename) {
 	return EXIT_SUCCESS;
 }
 
+int create_flex(char *filename) {
+	FILE *list;
+	FILE *out;
+	char line[1024];
+	struct fileheader curfile;
+	int numseems = 0;
+
+	list = fopen(listfilename, "r");
+	if(!list) {
+		fprintf(stderr, "Error opening listfile %s.\n", listfilename);
+		return EXIT_FAILURE;
+	}
+
+	out = fopen(filename, "wb+");
+	if(!out) {
+		fprintf(stderr, "Error opening output file %s.\n", filename);
+		return EXIT_FAILURE;
+	}
+
+	curfile.unknown1 = 0x00000000;
+	curfile.unknown2 = 0x000000B1;
+	curfile.unknown3 = 0x81040200;
+	curfile.unknown4 = 0x01000000;
+	fwrite(&curfile, 0x12, 1, out);
+
+	while(fgets(line, 1024, list)) {
+		char *lptr = line, *lptr_new;
+		int seemnum;
+		int record;
+		int seemlen;
+		struct seemheader curseem;
+		struct stat statbuf;
+		char seemfile[128];
+		FILE *inseem;
+		char *inbuffer;
+
+		if(strncmp(line, "SEEM ", 5) != 0) continue;
+		lptr += 5;
+		seemnum = strtoul(lptr, &lptr_new, 16);
+		lptr = lptr_new + 1;
+		lptr += 4;
+		record = strtoul(lptr, &lptr_new, 16);
+
+		sprintf(seemfile, "%4.4x_%4.4x.seem", seemnum, record);
+
+		inseem = fopen(seemfile, "rb");
+		if(!inseem) {
+			fprintf(stderr, "Error opening seem %s.\n", seemfile);
+		}
+
+		stat(seemfile, &statbuf);
+		seemlen = statbuf.st_size;
+
+		curseem.unknown1 = seemlen + 16;
+		curseem.skip_next = seemlen + 8;
+		curseem.seem = seemnum;
+		curseem.record = record;
+		curseem.unknown3 = 0;
+		curseem.length = seemlen;
+		fwrite(&curseem, 14, 1, out);
+
+		inbuffer = malloc(seemlen);
+		fread(inbuffer, seemlen, 1, inseem);
+		fwrite(inbuffer, seemlen, 1, out);
+		free(inbuffer);
+
+		fclose(inseem);
+		numseems++;
+	}
+
+	fseek(out, 0, SEEK_SET);
+	curfile.numseems = numseems;
+	fwrite(&curfile, 0x12, 1, out);
+
+	fclose(list);
+	fclose(out);
+	return EXIT_SUCCESS;
+}
+
 int main(int argc, char **argv) {
 	char line[16384];
 	char *filename;
-	char *outfilename;
+	char *outfilename = NULL;
 	bool extract, create, list;
 
 	int opt;
@@ -211,7 +291,7 @@ int main(int argc, char **argv) {
 			fprintf(stderr, "You need to specify an output filename.\nSee %s --help for syntax help.\n", argv[0]);
 			return EXIT_FAILURE;
 		}
-//		return create_cg2(outfilename);
+		return create_flex(outfilename);
 	} else if(list) {
 		return list_flex(filename);
 	}
