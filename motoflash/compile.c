@@ -64,6 +64,18 @@ void write_entry(long addr) {
 	fprintf(out, "S7%2.2x%8.8x%2.2x\n", len, addr, (~checksum) & 0xFF);
 }
 
+void write_header(char *hdr, int len) {
+	int i = 0;
+	int recordlen = len + 1;
+	int checksum = recordlen;
+	fprintf(out, "S0%2.2x", recordlen);
+	for(i = 0; i < len; i++) {
+		checksum += hdr[i];
+		fprintf(out, "%2.2x", hdr[i]);
+	}
+	fprintf(out, "%2.2x\n", (~checksum) & 0xFF);
+}
+
 //void write_hdr
 
 FILE *listfile = NULL;
@@ -143,6 +155,18 @@ int main(int argc, char **argv) {
 			addr = strtoul(lineptr, &newptr, 16);
 			fprintf(stderr, "Entry at %8.8x.\n", addr);
 			write_entry(addr);
+		} else if(!strncmp(lineptr, "HEADER ", 7)) {
+			char header[128];
+			int headerlen = 0;
+			int i = 0;
+			lineptr += 7;
+			while(*lineptr) {
+				header[headerlen] = strtoul(lineptr, &newptr, 16);
+				lineptr = newptr + 1;
+				headerlen++;
+				if(!*lineptr) break;
+			}
+			write_header(header, headerlen);
 		}
 	}
 	fclose(listfile);
